@@ -1,0 +1,24 @@
+{
+  "name": "@tripod311/flow",
+  "version": "0.0.0",
+  "description": "Lightweight minimalistic router for single page applications",
+  "keywords": [
+    "js",
+    "ts"
+  ],
+  "license": "MIT",
+  "author": "Tripod ind.tripod@gmail.com",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
