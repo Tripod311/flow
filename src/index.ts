@@ -25,7 +25,7 @@ export class Flow {
 	init () {
 		window.addEventListener("popstate", this.stateListener);
 
-		this.match(location.pathname);
+		this.match(location.pathname + location.search);
 	}
 
 	deinit () {
