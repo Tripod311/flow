@@ -1,4 +1,7 @@
-export type RouteHandler = (routeParams: Record<string, string>, urlParams: URLSearchParams) => void;
+export type RouteHandler = (
+	routeParams: Record<string, string>,
+	urlParams: URLSearchParams
+) => void;
 
 export interface Route {
 	pathname: string;
@@ -18,18 +21,28 @@ export class Flow {
 
 	constructor () {
 		this.stateListener = () => {
-			this.match(location.pathname);
-		}
+			this.match(
+				location.pathname + location.search
+			);
+		};
 	}
 
 	init () {
-		window.addEventListener("popstate", this.stateListener);
+		window.addEventListener(
+			"popstate",
+			this.stateListener
+		);
 
-		this.match(location.pathname + location.search);
+		this.match(
+			location.pathname + location.search
+		);
 	}
 
 	deinit () {
-		window.removeEventListener("popstate", this.stateListener);
+		window.removeEventListener(
+			"popstate",
+			this.stateListener
+		);
 	}
 
 	setFallback (handler: () => void) {
@@ -37,50 +50,59 @@ export class Flow {
 	}
 
 	add (path: string, handler: RouteHandler) {
-		const { pattern, keys } = Flow.pathToRegex(path);
+		const {
+			pattern,
+			keys,
+			staticParts,
+			parametricParts,
+			isWildcard
+		} = Flow.pathToRegex(path);
+
 		const route: Route = {
 			pathname: path,
-			pattern: pattern,
-			keys: keys,
-			staticParts: 0,
-			parametricParts: 0,
-			handler: handler
+			pattern,
+			keys,
+			staticParts,
+			parametricParts,
+			handler
 		};
-		let isWildCard = false;
 
-		const sp = path.split('/');
-
-		for (const hop of sp) {
-			if (hop === "*") {
-				if (sp.indexOf(hop) !== sp.length - 1) {
-					console.warn(`Wildcard '*' should be last hop: ${path}`);
-				}
-				isWildCard = true;
-			} else if (hop.charAt(0) === ':') {
-				route.parametricParts++;
-			} else {
-				route.staticParts++;
-			}
-		}
-
-		if (isWildCard) {
-			this.injectRoute(route, this.wildcardRoutes);
-		} else if (route.parametricParts > 0) {
-			this.injectRoute(route, this.parametricRoutes);
+		if (isWildcard) {
+			this.injectRoute(
+				route,
+				this.wildcardRoutes
+			);
+		} else if (parametricParts > 0) {
+			this.injectRoute(
+				route,
+				this.parametricRoutes
+			);
 		} else {
-			this.injectRoute(route, this.staticRoutes);
+			this.injectRoute(
+				route,
+				this.staticRoutes
+			);
 		}
 	}
 
-	private injectRoute (route: Route, collection: Route[]) {
+	private injectRoute (
+		route: Route,
+		collection: Route[]
+	) {
 		let index = 0;
 
 		while (index < collection.length) {
-			const r = collection[index];
+			const current = collection[index];
 
-			if ((r.parametricParts < route.parametricParts) ||
-				(r.parametricParts === route.parametricParts && r.staticParts < route.staticParts)) {
+			const isMoreSpecific =
+				route.staticParts > current.staticParts ||
+				(
+					route.staticParts === current.staticParts &&
+					route.parametricParts <
+						current.parametricParts
+				);
 
+			if (isMoreSpecific) {
 				collection.splice(index, 0, route);
 				return;
 			}
@@ -92,31 +114,111 @@ export class Flow {
 	}
 
 	private static pathToRegex (path: string) {
+		if (!path.startsWith("/")) {
+			throw new Error(
+				`Route must start with "/": ${path}`
+			);
+		}
+
+		if (path.includes("?") || path.includes("#")) {
+			throw new Error(
+				`Route must not contain query or hash: ${path}`
+			);
+		}
+
 		const keys: string[] = [];
+		const usedKeys = new Set<string>();
 
-		const regex = path
-			.split("/")
-			.map(seg => {
-				if (seg.startsWith(":")) {
-					keys.push(seg.slice(1));
-					return "([^/]+)";
-				}
-				if (seg === "*") {
-					return "(.*)?";
-				}
-				return seg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // escape
-			})
-			.join("/");
+		let staticParts = 0;
+		let parametricParts = 0;
+		let isWildcard = false;
 
-		return { 
-			pattern: new RegExp("^" + regex + "$"), 
-			keys 
+		const segments =
+			path === "/"
+				? []
+				: path.slice(1).split("/");
+
+		if (segments.some(segment => segment.length === 0)) {
+			throw new Error(
+				`Route contains an empty segment: ${path}`
+			);
+		}
+
+		let regex = "^";
+
+		if (segments.length === 0) {
+			regex += "/";
+		}
+
+		for (let i = 0; i < segments.length; i++) {
+			const segment = segments[i];
+
+			if (segment === "*") {
+				if (i !== segments.length - 1) {
+					throw new Error(
+						`Wildcard "*" must be the last segment: ${path}`
+					);
+				}
+
+				isWildcard = true;
+				keys.push("0");
+
+				if (i === 0) {
+					regex += "/(.*)";
+				} else {
+					regex += "(?:/(.*))?";
+				}
+
+				continue;
+			}
+
+			regex += "/";
+
+			if (segment.startsWith(":")) {
+				const key = segment.slice(1);
+
+				if (key.length === 0) {
+					throw new Error(
+						`Route parameter name cannot be empty: ${path}`
+					);
+				}
+
+				if (usedKeys.has(key)) {
+					throw new Error(
+						`Duplicate route parameter "${key}": ${path}`
+					);
+				}
+
+				usedKeys.add(key);
+				keys.push(key);
+				parametricParts++;
+
+				regex += "([^/]+)";
+			} else {
+				staticParts++;
+
+				regex += segment.replace(
+					/[.*+?^${}()|[\]\\]/g,
+					"\\$&"
+				);
+			}
+		}
+
+		regex += "$";
+
+		return {
+			pattern: new RegExp(regex),
+			keys,
+			staticParts,
+			parametricParts,
+			isWildcard
 		};
 	}
 
 	match (path: string) {
-		const [pathname, search = ""] = path.split("?");
-		const params = new URLSearchParams(search);
+		const url = new URL(path, location.href);
+		const pathname = url.pathname;
+		const params = url.searchParams;
 
 		for (const route of this.staticRoutes) {
 			if (pathname === route.pathname) {
@@ -125,46 +227,77 @@ export class Flow {
 			}
 		}
 
-		for (const route of this.parametricRoutes) {
-			const match = pathname.match(route.pattern);
-
-			if (match !== null) {
-				const routeParams: Record<string, string> = {};
-
-				for (let i=0; i<route.keys.length; i++) {
-					routeParams[route.keys[i]] = match[i+1];
-				}
-
-				route.handler(routeParams, params);
-				return;
-			}
+		if (
+			this.matchCollection(
+				pathname,
+				params,
+				this.parametricRoutes
+			)
+		) {
+			return;
 		}
 
-		for (const route of this.wildcardRoutes) {
-			const match = pathname.match(route.pattern);
-
-			if (match !== null) {
-				const routeParams: Record<string, string> = {};
-
-				for (let i=0; i<route.keys.length; i++) {
-					routeParams[route.keys[i]] = match[i+1];
-				}
-
-				route.handler(routeParams, params);
-				return;
-			}
+		if (
+			this.matchCollection(
+				pathname,
+				params,
+				this.wildcardRoutes
+			)
+		) {
+			return;
 		}
 
-		if (this.fallback !== undefined) this.fallback();
+		this.fallback?.();
 	}
 
-	navigate (path: string, replace: boolean = false) {
+	private matchCollection (
+		pathname: string,
+		urlParams: URLSearchParams,
+		collection: Route[]
+	): boolean {
+		for (const route of collection) {
+			const match = pathname.match(route.pattern);
+
+			if (!match) continue;
+
+			const routeParams: Record<string, string> =
+				Object.create(null);
+
+			for (let i = 0; i < route.keys.length; i++) {
+				const value = match[i + 1] ?? "";
+
+				try {
+					routeParams[route.keys[i]] =
+						decodeURIComponent(value);
+				} catch {
+					routeParams[route.keys[i]] = value;
+				}
+			}
+
+			route.handler(routeParams, urlParams);
+
+			return true;
+		}
+
+		return false;
+	}
+
+	navigate (
+		path: string,
+		replace: boolean = false
+	) {
 		if (replace) {
 			history.replaceState(null, "", path);
 		} else {
 			history.pushState(null, "", path);
 		}
 
-		this.match(path);
+		/*
+		 * Match the URL resolved by History API rather
+		 * than the original potentially relative path.
+		 */
+		this.match(
+			location.pathname + location.search
+		);
 	}
 }

@@ -18,7 +18,7 @@ Perfect for SPAs, easy to embed into any project, and just a few kilobytes in si
 ## Installation
 
 ```bash
-npm install flow-router
+npm install @tripod311/flow
 ```
 
 Or simply copy the file into your project.
